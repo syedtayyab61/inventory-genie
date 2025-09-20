@@ -1,0 +1,40 @@
+{
+  "reports": [
+    {
+      "id": "1687452300000",
+      "title": "Monthly Inventory Summary",
+      "type": "inventory",
+      "timestamp": "2023-06-22T15:45:00.000Z",
+      "data": {
+        "totalItems": 156,
+        "totalValue": 12450.75,
+        "lowStockItems": 8,
+        "expiringItems": 3,
+        "categories": {
+          "electronics": 42,
+          "clothing": 68,
+          "food": 24,
+          "other": 22
+        }
+      },
+      "createdBy": "admin"
+    },
+    {
+      "id": "1687538700000",
+      "title": "Weekly Sales Report",
+      "type": "sales",
+      "timestamp": "2023-06-23T15:45:00.000Z",
+      "data": {
+        "totalSales": 3245.50,
+        "transactions": 47,
+        "averageOrderValue": 69.05,
+        "topSellingItems": [
+          {"name": "Wireless Headphones", "quantity": 8, "revenue": 559.92},
+          {"name": "T-shirt (Medium)", "quantity": 12, "revenue": 239.88},
+          {"name": "Coffee Beans (1kg)", "quantity": 6, "revenue": 119.94}
+        ]
+      },
+      "createdBy": "manager"
+    }
+  ]
+}
