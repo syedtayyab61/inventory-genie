@@ -4,7 +4,7 @@ This document describes the API endpoints available for managing reports in the 
 
 ## Base URL
 
-When deployed with ngrok, your base URL will be the ngrok URL provided (e.g., `https://abc123.ngrok.io`).
+For local development, the base URL is `http://localhost:5002`.
 
 ## Endpoints
 

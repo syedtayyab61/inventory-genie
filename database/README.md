@@ -67,14 +67,9 @@ Where `[PORT]` is the port number your server is running on.
 
 ## Deployment
 
-The reports API is automatically deployed when you run the ngrok deployment script:
-
-```
-node deploy-ngrok.js
-```
-
-or use the batch file:
-
-```
-deploy-with-reports.bat
-```
+The reports API runs locally on port 5002. To deploy in production, use services like:
+- Railway
+- Heroku
+- DigitalOcean
+- AWS
+- Vercel (for serverless)
