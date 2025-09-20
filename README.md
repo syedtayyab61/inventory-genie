@@ -1,6 +1,6 @@
-# 📦 Inventory Genie - Universal Access
+# 🎯 Inventory Genie - Full-Stack SaaS Inventory Management System
 
-A comprehensive inventory management system accessible to everyone. No login required, works on any device!
+A professional, full-stack inventory management application built with React.js, Node.js, Express.js, and MongoDB. Features user authentication, real-time analytics, Excel reporting, and comprehensive data management.
 
 ## 🌐 Universal Access Features
 
