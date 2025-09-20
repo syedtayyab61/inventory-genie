@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { format, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
+import API_BASE_URL from './config';
 import InventoryList from './InventoryList';
 import ExpiryAlerts from './ExpiryAlerts';
 import SalesReport from './SalesReport';
@@ -55,14 +56,14 @@ function App() {
       };
 
       // Load products
-      const productsResponse = await fetch('http://localhost:5002/api/products', { headers });
+      const productsResponse = await fetch(`${API_BASE_URL}/api/products`, { headers });
       if (productsResponse.ok) {
         const productsData = await productsResponse.json();
         setProducts(productsData);
       }
 
       // Load sales
-      const salesResponse = await fetch('http://localhost:5002/api/sales', { headers });
+      const salesResponse = await fetch(`${API_BASE_URL}/api/sales`, { headers });
       if (salesResponse.ok) {
         const salesData = await salesResponse.json();
         setSales(salesData);
@@ -112,7 +113,7 @@ function App() {
     const config = { method, headers };
     if (body) config.body = JSON.stringify(body);
 
-    const response = await fetch(`http://localhost:5002${url}`, config);
+    const response = await fetch(`${API_BASE_URL}${url}`, config);
     
     if (!response.ok) {
       if (response.status === 401) {
@@ -167,8 +168,8 @@ function App() {
         productId,
         productName: product.name,
         quantity,
-        price: product.price,
-        total: product.price * quantity
+        price: product.sellingPrice,
+        total: product.sellingPrice * quantity
       };
       
       try {
@@ -182,8 +183,13 @@ function App() {
     }
   };
 
-  const resetSales = () => {
-    setSales([]);
+  const resetSales = async () => {
+    try {
+      await apiCall('/api/sales', 'DELETE');
+      setSales([]);
+    } catch (error) {
+      console.error('Error resetting sales:', error);
+    }
   };
 
   const generateShareableReport = () => {
@@ -369,7 +375,6 @@ function App() {
               <h3>👤 Account Information</h3>
               <div className="account-info">
                 <p><strong>Username:</strong> {user?.username}</p>
-                <p><strong>Email:</strong> {user?.email}</p>
                 <p><strong>Member since:</strong> {user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}</p>
               </div>
             </div>

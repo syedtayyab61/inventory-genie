@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import API_BASE_URL from './config';
 import './Auth.css';
 
 const DeleteAccount = ({ onDeleteAccount, user }) => {
@@ -22,7 +23,7 @@ const DeleteAccount = ({ onDeleteAccount, user }) => {
     setError('');
 
     try {
-      const response = await fetch('http://localhost:5002/api/user/delete', {
+      const response = await fetch(`${API_BASE_URL}/api/delete-account`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,

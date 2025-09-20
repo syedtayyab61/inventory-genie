@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
+import API_BASE_URL from './config';
 import './Auth.css';
 
 const Register = ({ onLogin, onSwitchToLogin }) => {
   const [formData, setFormData] = useState({
     username: '',
-    email: '',
     password: '',
     confirmPassword: ''
   });
@@ -48,7 +48,7 @@ const Register = ({ onLogin, onSwitchToLogin }) => {
     try {
       const { confirmPassword, ...registerData } = formData;
       
-      const response = await fetch('http://localhost:5002/api/register', {
+      const response = await fetch(`${API_BASE_URL}/api/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -99,20 +99,6 @@ const Register = ({ onLogin, onSwitchToLogin }) => {
               disabled={loading}
               minLength={3}
               maxLength={20}
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="email">Email Address</label>
-            <input
-              type="email"
-              id="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              required
-              placeholder="Enter your email"
-              disabled={loading}
             />
           </div>
 

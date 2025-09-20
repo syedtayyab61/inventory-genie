@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
+const path = require('path');
 require('dotenv').config();
 
 const app = express();
@@ -11,6 +12,9 @@ const PORT = process.env.PORT || 5000;
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Serve static files from the React app build directory
+app.use(express.static(path.join(__dirname, '../public')));
 
 // MongoDB Connection
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/inventory-genie';
@@ -46,7 +50,98 @@ const userSchema = new mongoose.Schema({
   }
 });
 
-// Product Schema (user-specific)
+// Base Product Schema (master product catalog)
+const baseProductSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  name: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  category: {
+    type: String,
+    default: 'general'
+  },
+  description: {
+    type: String,
+    trim: true
+  },
+  brand: {
+    type: String,
+    trim: true
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  }
+});
+
+// Product Batch Schema (individual batches with SKU)
+const productBatchSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  sku: {
+    type: String,
+    required: true,
+    unique: true,
+    trim: true
+  },
+  baseProductId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'BaseProduct',
+    required: true
+  },
+  baseProductName: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  batchNumber: {
+    type: String,
+    trim: true
+  },
+  quantity: {
+    type: Number,
+    required: true,
+    min: 0
+  },
+  price: {
+    type: Number,
+    required: true,
+    min: 0
+  },
+  expiryDate: {
+    type: Date
+  },
+  manufacturingDate: {
+    type: Date
+  },
+  supplier: {
+    type: String,
+    trim: true
+  },
+  location: {
+    type: String,
+    trim: true
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now
+  }
+});
+
+// Keep original schema for backward compatibility (will be deprecated)
 const productSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -119,7 +214,9 @@ const salesSchema = new mongoose.Schema({
 });
 
 const User = mongoose.model('User', userSchema);
-const Product = mongoose.model('Product', productSchema);
+const BaseProduct = mongoose.model('BaseProduct', baseProductSchema);
+const ProductBatch = mongoose.model('ProductBatch', productBatchSchema);
+const Product = mongoose.model('Product', productSchema); // Keep for backward compatibility
 const Sales = mongoose.model('Sales', salesSchema);
 
 // JWT Secret
@@ -245,11 +342,13 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// Product Routes (Protected)
+// Product Batch Routes (New SKU System)
 app.get('/api/products', authenticateToken, async (req, res) => {
   try {
-    const products = await Product.find({ userId: req.user.userId });
-    res.json(products);
+    const productBatches = await ProductBatch.find({ userId: req.user.userId })
+      .populate('baseProductId')
+      .sort({ expiryDate: 1 });
+    res.json(productBatches);
   } catch (error) {
     console.error('Get products error:', error);
     res.status(500).json({ error: 'Server error fetching products' });
@@ -258,12 +357,57 @@ app.get('/api/products', authenticateToken, async (req, res) => {
 
 app.post('/api/products', authenticateToken, async (req, res) => {
   try {
-    const product = new Product({
-      ...req.body,
-      userId: req.user.userId
+    const { name, category, description, brand, batchNumber, quantity, price, expiryDate, manufacturingDate, supplier, location } = req.body;
+    
+    // Find or create base product
+    let baseProduct = await BaseProduct.findOne({ 
+      userId: req.user.userId,
+      name: name.trim(),
+      brand: brand?.trim() || ''
     });
-    await product.save();
-    res.status(201).json(product);
+    
+    if (!baseProduct) {
+      baseProduct = new BaseProduct({
+        userId: req.user.userId,
+        name: name.trim(),
+        category: category || 'general',
+        description: description?.trim() || '',
+        brand: brand?.trim() || ''
+      });
+      await baseProduct.save();
+    }
+    
+    // Generate unique SKU
+    const timestamp = Date.now().toString().slice(-6);
+    const productPrefix = name.substring(0, 3).toUpperCase().replace(/[^A-Z]/g, 'X');
+    const batchSuffix = batchNumber ? batchNumber.substring(0, 6).toUpperCase() : timestamp;
+    const sku = `${productPrefix}-${batchSuffix}`;
+    
+    // Ensure SKU is unique by appending random characters if needed
+    let finalSku = sku;
+    let counter = 1;
+    while (await ProductBatch.findOne({ sku: finalSku })) {
+      finalSku = `${sku}-${counter}`;
+      counter++;
+    }
+    
+    const productBatch = new ProductBatch({
+      userId: req.user.userId,
+      sku: finalSku,
+      baseProductId: baseProduct._id,
+      baseProductName: name.trim(),
+      batchNumber: batchNumber?.trim() || '',
+      quantity,
+      price,
+      expiryDate: expiryDate ? new Date(expiryDate) : null,
+      manufacturingDate: manufacturingDate ? new Date(manufacturingDate) : null,
+      supplier: supplier?.trim() || '',
+      location: location?.trim() || ''
+    });
+    
+    await productBatch.save();
+    const populatedBatch = await ProductBatch.findById(productBatch._id).populate('baseProductId');
+    res.status(201).json(populatedBatch);
   } catch (error) {
     console.error('Create product error:', error);
     res.status(500).json({ error: 'Server error creating product' });
@@ -272,17 +416,32 @@ app.post('/api/products', authenticateToken, async (req, res) => {
 
 app.put('/api/products/:id', authenticateToken, async (req, res) => {
   try {
-    const product = await Product.findOneAndUpdate(
-      { _id: req.params.id, userId: req.user.userId },
-      req.body,
-      { new: true }
-    );
+    const { quantity, price, expiryDate, manufacturingDate, supplier, location, batchNumber } = req.body;
     
-    if (!product) {
-      return res.status(404).json({ error: 'Product not found' });
+    // Update only batch-specific fields
+    const updateData = {
+      updatedAt: new Date()
+    };
+    
+    if (quantity !== undefined) updateData.quantity = quantity;
+    if (price !== undefined) updateData.price = price;
+    if (expiryDate !== undefined) updateData.expiryDate = expiryDate ? new Date(expiryDate) : null;
+    if (manufacturingDate !== undefined) updateData.manufacturingDate = manufacturingDate ? new Date(manufacturingDate) : null;
+    if (supplier !== undefined) updateData.supplier = supplier?.trim() || '';
+    if (location !== undefined) updateData.location = location?.trim() || '';
+    if (batchNumber !== undefined) updateData.batchNumber = batchNumber?.trim() || '';
+    
+    const productBatch = await ProductBatch.findOneAndUpdate(
+      { _id: req.params.id, userId: req.user.userId },
+      updateData,
+      { new: true }
+    ).populate('baseProductId');
+    
+    if (!productBatch) {
+      return res.status(404).json({ error: 'Product batch not found' });
     }
     
-    res.json(product);
+    res.json(productBatch);
   } catch (error) {
     console.error('Update product error:', error);
     res.status(500).json({ error: 'Server error updating product' });
@@ -291,19 +450,71 @@ app.put('/api/products/:id', authenticateToken, async (req, res) => {
 
 app.delete('/api/products/:id', authenticateToken, async (req, res) => {
   try {
-    const product = await Product.findOneAndDelete({
+    const productBatch = await ProductBatch.findOneAndDelete({
       _id: req.params.id,
       userId: req.user.userId
     });
     
-    if (!product) {
-      return res.status(404).json({ error: 'Product not found' });
+    if (!productBatch) {
+      return res.status(404).json({ error: 'Product batch not found' });
     }
     
-    res.json({ message: 'Product deleted successfully' });
+    res.json({ message: 'Product batch deleted successfully' });
   } catch (error) {
     console.error('Delete product error:', error);
     res.status(500).json({ error: 'Server error deleting product' });
+  }
+});
+
+// Get products grouped by base product
+app.get('/api/products/grouped', authenticateToken, async (req, res) => {
+  try {
+    const productBatches = await ProductBatch.find({ userId: req.user.userId })
+      .populate('baseProductId')
+      .sort({ baseProductName: 1, expiryDate: 1 });
+    
+    // Group by base product
+    const grouped = productBatches.reduce((acc, batch) => {
+      const key = `${batch.baseProductName}-${batch.baseProductId.brand || 'No Brand'}`;
+      if (!acc[key]) {
+        acc[key] = {
+          baseProduct: batch.baseProductId,
+          batches: []
+        };
+      }
+      acc[key].batches.push(batch);
+      return acc;
+    }, {});
+    
+    res.json(grouped);
+  } catch (error) {
+    console.error('Get grouped products error:', error);
+    res.status(500).json({ error: 'Server error fetching grouped products' });
+  }
+});
+
+// Get products by base product name
+app.get('/api/products/by-name/:name', authenticateToken, async (req, res) => {
+  try {
+    const batches = await ProductBatch.find({ 
+      userId: req.user.userId,
+      baseProductName: new RegExp(req.params.name, 'i') 
+    }).populate('baseProductId').sort({ expiryDate: 1 });
+    res.json(batches);
+  } catch (error) {
+    console.error('Get products by name error:', error);
+    res.status(500).json({ error: 'Server error fetching products by name' });
+  }
+});
+
+// Legacy Product Routes (for backward compatibility)
+app.get('/api/products/legacy', authenticateToken, async (req, res) => {
+  try {
+    const products = await Product.find({ userId: req.user.userId });
+    res.json(products);
+  } catch (error) {
+    console.error('Get legacy products error:', error);
+    res.status(500).json({ error: 'Server error fetching legacy products' });
   }
 });
 
@@ -337,7 +548,13 @@ app.delete('/api/user/delete', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
 
-    // Delete all user's products
+    // Delete all user's product batches
+    await ProductBatch.deleteMany({ userId });
+    
+    // Delete all user's base products
+    await BaseProduct.deleteMany({ userId });
+    
+    // Delete all user's legacy products
     await Product.deleteMany({ userId });
     
     // Delete all user's sales
@@ -369,7 +586,24 @@ app.get('/api/test', (req, res) => {
   res.json({ message: 'Backend server is running!' });
 });
 
-app.listen(PORT, () => {
+// Serve React app for any non-API routes
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/index.html'));
+});
+
+const server = app.listen(PORT, () => {
   console.log(`🚀 Backend server running on http://localhost:${PORT}`);
   console.log(`📊 MongoDB URI: ${MONGODB_URI}`);
+  console.log(`🌐 Frontend available at: http://localhost:${PORT}`);
+}).on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`❌ Port ${PORT} is already in use. Trying port ${PORT + 1}...`);
+    app.listen(PORT + 1, () => {
+      console.log(`🚀 Backend server running on http://localhost:${PORT + 1}`);
+      console.log(`📊 MongoDB URI: ${MONGODB_URI}`);
+      console.log(`🌐 Frontend available at: http://localhost:${PORT + 1}`);
+    });
+  } else {
+    console.error('❌ Server error:', err);
+  }
 });
